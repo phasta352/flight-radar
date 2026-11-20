@@ -1,0 +1,25 @@
+{
+  "_comment": "Made-up aircraft around Luxembourg for --demo mode",
+  "ac": [
+    {"hex": "4d0105", "flight": "LGL4TV  ", "r": "LX-LGA", "t": "DH8D", "lat": 49.645, "lon": 6.285, "alt_baro": 3200, "gs": 182, "track": 242, "baro_rate": -896, "squawk": "4621"},
+    {"hex": "4d0121", "flight": "CLX7841 ", "r": "LX-VCM", "t": "B748", "lat": 49.585, "lon": 6.020, "alt_baro": 6800, "gs": 231, "track": 245, "baro_rate": 1920, "squawk": "4605"},
+    {"hex": "3c6752", "flight": "DLH8VK  ", "r": "D-AIBL", "t": "A319", "lat": 49.720, "lon": 6.080, "alt_baro": 36000, "gs": 448, "track": 312, "baro_rate": 0, "squawk": "1000"},
+    {"hex": "406a3c", "flight": "EZY45TR ", "r": "G-UZHF", "t": "A20N", "lat": 49.530, "lon": 6.250, "alt_baro": 38000, "gs": 461, "track": 135, "baro_rate": 64, "squawk": "1000"},
+    {"hex": "44cdc5", "flight": "BEL7PC  ", "r": "OO-SNE", "t": "A320", "lat": 49.760, "lon": 6.300, "alt_baro": 24500, "gs": 402, "track": 68, "baro_rate": 1408, "squawk": "1000"},
+    {"hex": "4d0157", "flight": "LGL8008 ", "r": "LX-LQB", "t": "BCS3", "lat": 49.612, "lon": 6.175, "alt_baro": 1800, "gs": 148, "track": 62, "baro_rate": -704, "squawk": "4633"},
+    {"hex": "3944ef", "flight": "AFR1279 ", "r": "F-HBNA", "t": "A21N", "lat": 49.470, "lon": 5.980, "alt_baro": 34975, "gs": 455, "track": 205, "baro_rate": 0, "squawk": "1000"},
+    {"hex": "4d2275", "flight": "", "r": "LX-HEP", "t": "EC35", "lat": 49.598, "lon": 6.112, "alt_baro": 1100, "gs": 95, "track": 18, "baro_rate": 0, "squawk": "7000"},
+    {"hex": "4b1813", "flight": "SWR64Q  ", "r": "HB-JCA", "t": "BCS3", "lat": 49.800, "lon": 5.900, "alt_baro": 37000, "gs": 470, "track": 330, "baro_rate": 0, "squawk": "1000"},
+    {"hex": "4d0158", "flight": "LGL999  ", "r": "LX-LGR", "t": "DH8D", "lat": 49.623, "lon": 6.204, "alt_baro": "ground", "gs": 4, "track": 90, "squawk": "4600"}
+  ],
+  "routes": {
+    "LGL4TV": "LCY→LUX",
+    "CLX7841": "LUX→HKG",
+    "DLH8VK": "MUC→LHR",
+    "EZY45TR": "LGW→MXP",
+    "BEL7PC": "BRU→VIE",
+    "LGL8008": "LUX→BCN",
+    "AFR1279": "AMS→NCE",
+    "SWR64Q": "ZRH→AMS"
+  }
+}
