@@ -25,7 +25,7 @@ DEFAULTS = {
         "width": 800,
         "height": 480,
         "preview_path": "preview.png",
-        "refresh_seconds": 120,
+        "refresh_seconds": 45,
         "max_list": 6,
         "units": "aviation",
         "rotate": 0,

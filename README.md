@@ -86,7 +86,7 @@ Everything lives in [`config.toml`](config.toml). The settings you're most likel
 - **`latitude` / `longitude`**: your home. In Google Maps, right-click your house and click the numbers to copy them.
 - **`radius_km`**: how far around you to look. 15–30 km feels like "overhead"; 50+ km shows more traffic.
 - **`min_altitude_ft`**: raise it to hide helicopters and light aircraft.
-- **`refresh_seconds`**: e-ink flashes black/white on each full refresh. 60–180 s is a good balance.
+- **`refresh_seconds`**: how often the screen redraws (default 45, minimum 30). A cruising jet covers about 14 km a minute, so 30–60 s keeps the radar close to reality. Each redraw makes the e-ink flash briefly; raise it if that bothers you.
 - **`model`**: the Waveshare driver name. Some common ones:
 
   | Display | `model` |
@@ -133,4 +133,4 @@ flightradar/
 install.sh      one-time Raspberry Pi setup + systemd service
 ```
 
-Please respect the data providers: the free APIs are for **non-commercial use** and are rate-limited (about 1 request/second). This app makes one request every couple of minutes. If you enjoy the app, consider [feeding data](https://airplanes.live) back to the network with a cheap USB SDR receiver.
+Please respect the data providers: the free APIs are for **non-commercial use** and are rate-limited (about 1 request/second). This app makes about one request a minute. If you enjoy the app, consider [feeding data](https://airplanes.live) back to the network with a cheap USB SDR receiver.
