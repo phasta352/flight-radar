@@ -1,5 +1,5 @@
 __pycache__/
 *.pyc
 .venv/
-preview.png
+/preview.png
 waveshare_epd/

@@ -20,6 +20,7 @@ DEFAULTS = {
     },
     "display": {
         "driver": "preview",
+        "mode": "list",
         "model": "epd7in5_V2",
         "width": 800,
         "height": 480,

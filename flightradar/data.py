@@ -43,6 +43,23 @@ EMERGENCY_SQUAWKS = {"7500": "HIJACK", "7600": "RADIO FAIL", "7700": "EMERGENCY"
 
 
 @dataclass
+class Route:
+    origin: str          # airport code, e.g. "LUX"
+    origin_city: str     # e.g. "Luxembourg"
+    destination: str
+    destination_city: str
+    airline: str = ""
+
+    @property
+    def codes(self) -> str:
+        return f"{self.origin}→{self.destination}"
+
+    @property
+    def cities(self) -> str:
+        return f"{self.origin_city} → {self.destination_city}"
+
+
+@dataclass
 class Aircraft:
     hex: str
     callsign: str
@@ -58,7 +75,7 @@ class Aircraft:
     squawk: str
     distance_km: float = 0.0
     bearing: float = 0.0
-    route: str | None = None
+    route: Route | None = None
 
     @property
     def label(self) -> str:
@@ -168,7 +185,7 @@ class FlightFetcher:
         self.cfg = cfg
         self.session = requests.Session()
         self.session.headers["User-Agent"] = USER_AGENT
-        self._route_cache: dict[str, tuple[str | None, float]] = {}
+        self._route_cache: dict[str, tuple[Route | None, float]] = {}
 
     def fetch(self) -> Snapshot:
         loc = self.cfg["location"]
@@ -196,12 +213,13 @@ class FlightFetcher:
             aircraft = [a for a in (parse_aircraft(r, lat, lon) for r in raw_list) if a]
             aircraft = filter_and_sort(aircraft, self.cfg)
             if self.cfg["data"]["lookup_routes"]:
-                self._add_routes(aircraft[: self.cfg["display"]["max_list"]])
+                n = 1 if self.cfg["display"]["mode"] == "nearest" else self.cfg["display"]["max_list"]
+                self._add_routes(aircraft[:n])
             log.info("Got %d aircraft from %s", len(aircraft), name)
             return Snapshot(aircraft, name, time.time())
         return Snapshot([], "", time.time(), error="; ".join(errors) or "no sources")
 
-    # Route lookup: callsign -> "LUX→LHR". Cached, because routes rarely change
+    # Route lookup: callsign -> origin/destination airports + cities. Cached, because routes rarely change
     # and we only want to make a handful of extra requests per refresh.
     def _add_routes(self, aircraft: list[Aircraft]) -> None:
         now = time.time()
@@ -217,7 +235,7 @@ class FlightFetcher:
             self._route_cache[cs] = (route, now + ttl)
             ac.route = route
 
-    def _lookup_route(self, callsign: str) -> tuple[str | None, float]:
+    def _lookup_route(self, callsign: str) -> tuple[Route | None, float]:
         try:
             resp = self.session.get(ROUTE_URL.format(callsign=callsign), timeout=5)
             if resp.status_code == 404:
@@ -231,7 +249,13 @@ class FlightFetcher:
             def code(ap):
                 return ap.get("iata_code") or ap.get("icao_code") or "?"
 
-            return f"{code(fr['origin'])}→{code(fr['destination'])}", 6 * 3600
+            def city(ap):
+                return ap.get("municipality") or ap.get("name") or ""
+
+            o, dst = fr["origin"], fr["destination"]
+            airline = fr.get("airline") if isinstance(fr.get("airline"), dict) else {}
+            route = Route(code(o), city(o), code(dst), city(dst), airline.get("name") or "")
+            return route, 6 * 3600
         except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
             log.debug("Route lookup failed for %s: %s", callsign, exc)
             return None, 15 * 60  # try again later
@@ -258,5 +282,6 @@ class DemoFetcher:
         ]
         aircraft = filter_and_sort(aircraft, self.cfg)
         for ac in aircraft:
-            ac.route = self.sample.get("routes", {}).get(ac.callsign)
+            r = self.sample.get("routes", {}).get(ac.callsign)
+            ac.route = Route(*r) if r else None
         return Snapshot(aircraft, "demo data", time.time())

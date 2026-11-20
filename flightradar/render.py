@@ -76,6 +76,22 @@ def _fmt_speed(ac, units):
     return f"{ac.speed_kt:.0f} kt"
 
 
+def _fit(d, text, font, max_w):
+    """Shorten text with an ellipsis so it fits in max_w pixels."""
+    if d.textlength(text, font=font) <= max_w:
+        return text
+    while text and d.textlength(text + "…", font=font) > max_w:
+        text = text[:-1]
+    return text.rstrip() + "…"
+
+
+COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+
+
+def _compass(deg):
+    return COMPASS[int((deg + 22.5) // 45) % 8]
+
+
 def _trend(ac):
     if ac.vertical_rate is None or abs(ac.vertical_rate) < 300:
         return ""
@@ -85,6 +101,8 @@ def _trend(ac):
 class Renderer:
     def __init__(self, cfg: dict):
         self.cfg = cfg
+        self.mode = cfg["display"].get("mode", "list")
+        self.numbered = 1 if self.mode == "nearest" else cfg["display"]["max_list"]
         self.f_title = _font(22, bold=True)
         self.f_header = _font(18)
         self.f_call = _font(22, bold=True)
@@ -92,6 +110,12 @@ class Renderer:
         self.f_detail = _font(15)
         self.f_small = _font(13)
         self.f_badge = _font(13, bold=True)
+        self.f_city = _font(14)
+        # "nearest" mode
+        self.f_big_call = _font(38, bold=True)
+        self.f_big_code = _font(34, bold=True)
+        self.f_label = _font(13)
+        self.f_value = _font(20, bold=True)
 
     def render(self, snap: Snapshot, width: int, height: int) -> Image.Image:
         img = Image.new("1", (width, height), WHITE)
@@ -102,7 +126,11 @@ class Renderer:
         self._header(d, snap, width, header_h)
         radar_size = min(body_bottom - body_top, int(width * 0.55))
         self._radar(d, snap, 0, body_top, radar_size, body_bottom - body_top)
-        self._list(d, snap, radar_size, body_top, width - radar_size, body_bottom - body_top)
+        panel = (d, snap, radar_size, body_top, width - radar_size, body_bottom - body_top)
+        if self.mode == "nearest":
+            self._nearest(*panel)
+        else:
+            self._list(*panel)
         self._footer(d, snap, width, height, footer_h)
         return img
 
@@ -142,7 +170,7 @@ class Renderer:
         d.line([cx - 6, cy, cx + 6, cy], fill=BLACK, width=2)
         d.line([cx, cy - 6, cx, cy + 6], fill=BLACK, width=2)
 
-        max_list = self.cfg["display"]["max_list"]
+        max_list = self.numbered
         # draw far aircraft first so the nearest ends up on top
         for idx in range(len(snap.aircraft) - 1, -1, -1):
             ac = snap.aircraft[idx]
@@ -165,45 +193,130 @@ class Renderer:
         d.text((x, y), str(n), font=self.f_badge, fill=fg, anchor="mm")
 
     # -------------------------------------------------------------------- list
+    def _empty(self, d, snap, x0, y0, w, h):
+        msg = "Can't reach flight data" if snap.error else "Clear skies"
+        sub = "Will retry shortly" if snap.error else (
+            f"Nothing within {self.cfg['filter']['radius_km']} km right now")
+        d.text((x0 + w // 2, y0 + h // 2 - 14), msg, font=self.f_call, fill=BLACK, anchor="mm")
+        d.text((x0 + w // 2, y0 + h // 2 + 16), sub, font=self.f_detail, fill=BLACK, anchor="mm")
+
     def _list(self, d, snap, x0, y0, w, h):
         d.line([x0, y0, x0, y0 + h], fill=BLACK, width=2)
-        pad = 14
         if not snap.aircraft:
-            msg = "Can't reach flight data" if snap.error else "Clear skies"
-            sub = "Will retry shortly" if snap.error else (
-                f"Nothing within {self.cfg['filter']['radius_km']} km right now")
-            d.text((x0 + w // 2, y0 + h // 2 - 14), msg, font=self.f_call, fill=BLACK, anchor="mm")
-            d.text((x0 + w // 2, y0 + h // 2 + 16), sub, font=self.f_detail, fill=BLACK, anchor="mm")
-            return
-
+            return self._empty(d, snap, x0, y0, w, h)
+        pad = 14
         units = self.cfg["display"]["units"]
         n = self.cfg["display"]["max_list"]
         row_h = h / n
         for i, ac in enumerate(snap.aircraft[:n]):
             top = y0 + i * row_h
-            mid1 = top + row_h * 0.36
-            mid2 = top + row_h * 0.72
-            self._badge(d, x0 + pad + 9, mid1, i + 1)
-            tx = x0 + pad + 26
-            d.text((tx, mid1), ac.label, font=self.f_call, fill=BLACK, anchor="lm")
-            right = ac.emergency or ac.route or ""
-            if right:
-                if ac.emergency:
-                    tw = d.textlength(right, font=self.f_route)
-                    d.rectangle([x0 + w - pad - tw - 6, mid1 - 12, x0 + w - pad + 2, mid1 + 12], fill=BLACK)
-                    d.text((x0 + w - pad - 2, mid1), right, font=self.f_route, fill=WHITE, anchor="rm")
-                else:
-                    d.text((x0 + w - pad, mid1), right, font=self.f_route, fill=BLACK, anchor="rm")
+            l1, l2, l3 = top + row_h * 0.27, top + row_h * 0.55, top + row_h * 0.80
+            tx, right_x = x0 + pad + 26, x0 + w - pad
+            self._badge(d, x0 + pad + 9, l1, i + 1)
 
+            # line 1: callsign ............ LUX→BCN (or emergency tag)
+            d.text((tx, l1), ac.label, font=self.f_call, fill=BLACK, anchor="lm")
+            if ac.emergency:
+                tw = d.textlength(ac.emergency, font=self.f_route)
+                d.rectangle([right_x - tw - 6, l1 - 12, right_x + 2, l1 + 12], fill=BLACK)
+                d.text((right_x - 2, l1), ac.emergency, font=self.f_route, fill=WHITE, anchor="rm")
+            elif ac.route:
+                d.text((right_x, l1), ac.route.codes, font=self.f_route, fill=BLACK, anchor="rm")
+
+            # line 2: Luxembourg → Barcelona   (or registration if no route)
+            if ac.route:
+                line2 = ac.route.cities
+            else:
+                line2 = ac.registration if ac.registration and ac.registration != ac.label else ""
+            if line2:
+                d.text((tx, l2), _fit(d, line2, self.f_city, right_x - tx), font=self.f_city,
+                       fill=BLACK, anchor="lm")
+
+            # line 3: type · altitude · speed ....... distance
             details = [ac.type_code, _fmt_alt(ac, units) + _trend(ac), _fmt_speed(ac, units)]
-            detail = "  ·  ".join(p for p in details if p)
-            d.text((tx, mid2), detail, font=self.f_detail, fill=BLACK, anchor="lm")
-            d.text((x0 + w - pad, mid2), f"{ac.distance_km:.1f} km", font=self.f_detail,
+            d.text((tx, l3), "  ·  ".join(p for p in details if p), font=self.f_detail,
+                   fill=BLACK, anchor="lm")
+            d.text((right_x, l3), f"{ac.distance_km:.1f} km", font=self.f_detail,
                    fill=BLACK, anchor="rm")
             if i < n - 1:
                 ly = top + row_h - 1
-                for xx in range(int(x0 + pad), int(x0 + w - pad), 6):  # dotted divider
+                for xx in range(int(x0 + pad), int(right_x), 6):  # dotted divider
                     d.line([xx, ly, xx + 2, ly], fill=BLACK)
+
+    # ----------------------------------------------------------------- nearest
+    def _nearest(self, d, snap, x0, y0, w, h):
+        d.line([x0, y0, x0, y0 + h], fill=BLACK, width=2)
+        if not snap.aircraft:
+            return self._empty(d, snap, x0, y0, w, h)
+        ac = snap.aircraft[0]
+        units = self.cfg["display"]["units"]
+        pad = 18
+        lx, rx = x0 + pad, x0 + w - pad
+        inner_w = rx - lx
+        y = y0 + 14
+
+        d.text((lx, y), "NEAREST AIRCRAFT", font=self.f_label, fill=BLACK, anchor="lt")
+        if ac.emergency:
+            tw = d.textlength(ac.emergency, font=self.f_badge)
+            d.rectangle([rx - tw - 8, y - 3, rx, y + 15], fill=BLACK)
+            d.text((rx - 4, y + 6), ac.emergency, font=self.f_badge, fill=WHITE, anchor="rm")
+        y += 20
+        d.text((lx, y), _fit(d, ac.label, self.f_big_call, inner_w), font=self.f_big_call,
+               fill=BLACK, anchor="lt")
+        y += 46
+        reg = ac.registration if ac.registration != ac.label else ""
+        airline = ac.route.airline if ac.route else ""
+        sub = "  ·  ".join(x for x in (airline, reg) if x)
+        if sub:
+            d.text((lx, y), _fit(d, sub, self.f_route, inner_w), font=self.f_route,
+                   fill=BLACK, anchor="lt")
+        y += 34
+
+        # route block:  LUX ──✈── HKG  with city names underneath
+        d.line([lx, y, rx, y], fill=BLACK, width=2)
+        y += 12
+        if ac.route:
+            r = ac.route
+            d.text((lx, y), r.origin, font=self.f_big_code, fill=BLACK, anchor="lt")
+            d.text((rx, y), r.destination, font=self.f_big_code, fill=BLACK, anchor="rt")
+            ow = d.textlength(r.origin, font=self.f_big_code)
+            dw = d.textlength(r.destination, font=self.f_big_code)
+            ly = y + 19
+            a, b = lx + ow + 12, rx - dw - 12
+            for xx in range(int(a), int(b), 8):
+                d.line([xx, ly, xx + 4, ly], fill=BLACK, width=2)
+            d.polygon(_plane_polygon((a + b) / 2, ly, 11, 90), fill=BLACK)
+            half = inner_w / 2 - 6
+            d.text((lx, y + 44), _fit(d, r.origin_city, self.f_detail, half),
+                   font=self.f_detail, fill=BLACK, anchor="lt")
+            d.text((rx, y + 44), _fit(d, r.destination_city, self.f_detail, half),
+                   font=self.f_detail, fill=BLACK, anchor="rt")
+        else:
+            d.text((lx + inner_w / 2, y + 30), "Route unknown", font=self.f_route,
+                   fill=BLACK, anchor="mm")
+        y += 72
+        d.line([lx, y, rx, y], fill=BLACK, width=2)
+
+        # stats grid, 2 columns x 3 rows
+        aircraft = ac.type_code
+        heading = f"{ac.track:.0f}° {_compass(ac.track)}" if ac.track is not None else "—"
+        stats = [
+            ("ALTITUDE", _fmt_alt(ac, units) + _trend(ac)),
+            ("SPEED", _fmt_speed(ac, units) or "—"),
+            ("DISTANCE", f"{ac.distance_km:.1f} km {_compass(ac.bearing)}"),
+            ("HEADING", heading),
+            ("AIRCRAFT", aircraft or "—"),
+            ("SQUAWK", ac.squawk or "—"),
+        ]
+        grid_top = y + 10
+        cell_h = (y0 + h - grid_top - 6) / 3
+        col_w = inner_w / 2
+        for k, (label, value) in enumerate(stats):
+            cx = lx + (k % 2) * col_w
+            cy = grid_top + (k // 2) * cell_h
+            d.text((cx, cy + 4), label, font=self.f_label, fill=BLACK, anchor="lt")
+            d.text((cx, cy + 20), _fit(d, value, self.f_value, col_w - 8), font=self.f_value,
+                   fill=BLACK, anchor="lt")
 
     # ------------------------------------------------------------------ footer
     def _footer(self, d, snap, width, height, h):
@@ -214,7 +327,7 @@ class Renderer:
         else:
             left = f"Data: {snap.source}"
         right = f"Radius {self.cfg['filter']['radius_km']} km"
-        extra = len(snap.aircraft) - self.cfg["display"]["max_list"]
+        extra = len(snap.aircraft) - self.numbered
         if extra > 0:
             d.text((width // 2, y + h // 2 + 1), f"+{extra} more on radar", font=self.f_small,
                    fill=BLACK, anchor="mm")

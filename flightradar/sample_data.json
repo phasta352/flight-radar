@@ -13,13 +13,13 @@
     {"hex": "4d0158", "flight": "LGL999  ", "r": "LX-LGR", "t": "DH8D", "lat": 49.623, "lon": 6.204, "alt_baro": "ground", "gs": 4, "track": 90, "squawk": "4600"}
   ],
   "routes": {
-    "LGL4TV": "LCY→LUX",
-    "CLX7841": "LUX→HKG",
-    "DLH8VK": "MUC→LHR",
-    "EZY45TR": "LGW→MXP",
-    "BEL7PC": "BRU→VIE",
-    "LGL8008": "LUX→BCN",
-    "AFR1279": "AMS→NCE",
-    "SWR64Q": "ZRH→AMS"
+    "LGL4TV": ["LCY", "London", "LUX", "Luxembourg", "Luxair"],
+    "CLX7841": ["LUX", "Luxembourg", "HKG", "Hong Kong", "Cargolux"],
+    "DLH8VK": ["MUC", "Munich", "LHR", "London", "Lufthansa"],
+    "EZY45TR": ["LGW", "London", "MXP", "Milan", "easyJet"],
+    "BEL7PC": ["BRU", "Brussels", "VIE", "Vienna", "Brussels Airlines"],
+    "LGL8008": ["LUX", "Luxembourg", "BCN", "Barcelona", "Luxair"],
+    "AFR1279": ["AMS", "Amsterdam", "NCE", "Nice", "Air France"],
+    "SWR64Q": ["ZRH", "Zurich", "AMS", "Amsterdam", "Swiss"]
   }
 }

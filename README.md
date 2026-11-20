@@ -1,10 +1,14 @@
 # ✈ Raspberry Pi E-Ink Flight Radar
 
-A Raspberry Pi with an e-ink screen that shows the aircraft flying over you right now: a radar view on the left, and the nearest flights on the right with callsign, route, aircraft type, altitude, speed and distance.
+A Raspberry Pi with an e-ink screen that shows the aircraft flying over you right now: a radar view on the left, and details on the right: callsign, airline, route (airport codes and city names), aircraft type, altitude, speed and distance.
 
-![Preview](docs/preview.png)
+There are two display modes:
 
-*(This picture was made with the built-in demo data. The real screen shows live traffic.)*
+| `mode = "list"`: the nearest 5–6 flights | `mode = "nearest"`: the closest aircraft in detail |
+|---|---|
+| ![List mode](docs/mode-list.png) | ![Nearest mode](docs/mode-nearest.png) |
+
+*(These pictures were made with the built-in demo data. The real screen shows live traffic.)*
 
 Flight data comes from free community ADS-B networks ([airplanes.live](https://airplanes.live), [adsb.fi](https://adsb.fi), [adsb.lol](https://adsb.lol)), and routes come from [adsbdb.com](https://www.adsbdb.com). You don't need an API key or account. If one source is down, the app tries the next one.
 
@@ -78,6 +82,7 @@ Useful commands:
 
 Everything lives in [`config.toml`](config.toml). The settings you're most likely to change:
 
+- **`mode`**: `"list"` shows the nearest flights (set how many with `max_list`; 5 or 6 fits the 7.5" screen). `"nearest"` shows one big card for the closest aircraft.
 - **`latitude` / `longitude`**: your home. In Google Maps, right-click your house and click the numbers to copy them.
 - **`radius_km`**: how far around you to look. 15–30 km feels like "overhead"; 50+ km shows more traffic.
 - **`min_altitude_ft`**: raise it to hide helicopters and light aircraft.
@@ -91,7 +96,7 @@ Everything lives in [`config.toml`](config.toml). The settings you're most likel
   | 5.83" V2 (648×480) | `epd5in83_V2` |
   | 4.2" V2 (400×300) | `epd4in2_V2` |
 
-  The layout is built for 800×480. Smaller screens work but will feel cramped, so lower `max_list` to 3–4.
+  The layout is built for 800×480. Smaller screens work but will feel cramped, so use `mode = "nearest"` or lower `max_list` to 3–4.
 
 ## 7. Try it on your computer first (optional)
 
@@ -102,6 +107,7 @@ git clone https://github.com/phasta352/flight-radar.git && cd flight-radar
 python3 -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python -m flightradar --demo --once     # fake aircraft → preview.png
+python -m flightradar --demo --once --mode nearest   # try the other layout
 python -m flightradar --once            # live aircraft around you → preview.png
 ```
 
@@ -111,7 +117,7 @@ Open `preview.png` to see exactly what the e-ink screen would show.
 
 - **Screen stays blank**: check that SPI is on (`ls /dev/spi*` should list devices), that you rebooted after `install.sh`, that the ribbon is seated, and that `model` matches your display.
 - **"Can't reach flight data"**: check the Pi's internet with `ping -c 3 api.airplanes.live`.
-- **No routes shown**: private, military and some cargo flights have no published route. That's normal.
+- **No route or cities shown**: private, military and some cargo flights have no published route. That's normal.
 - **Faint ghost images**: normal for e-ink. The app does a full refresh each time and blanks the screen when stopped.
 
 ## How the code is organised

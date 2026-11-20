@@ -21,6 +21,7 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", help="draw one frame and exit")
     ap.add_argument("--demo", action="store_true", help="use built-in fake aircraft (no internet)")
     ap.add_argument("--driver", choices=["preview", "waveshare"], help="override display driver")
+    ap.add_argument("--mode", choices=["list", "nearest"], help="override display mode")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -32,6 +33,8 @@ def main() -> int:
     cfg = load_config(args.config)
     if args.driver:
         cfg["display"]["driver"] = args.driver
+    if args.mode:
+        cfg["display"]["mode"] = args.mode
 
     fetcher = DemoFetcher(cfg) if args.demo else FlightFetcher(cfg)
     display = make_display(cfg)
