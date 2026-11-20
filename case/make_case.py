@@ -1,0 +1,230 @@
+"""Generates a 3D-printable two-part case for the flight radar:
+
+    Waveshare 7.5" e-Paper HAT (V2, 800x480) + Raspberry Pi Zero 2 WH
+
+Outputs (in this folder):
+    case_front.stl   front frame: holds the panel, print FACE DOWN
+    case_back.stl    back cover: Pi mount, panel supports, wall-mount
+                     keyholes, vents. Print OUTSIDE FACE DOWN.
+
+Run:  python3 make_case.py     (needs only numpy)
+
+All sizes are in millimetres and live in the PARAMETERS block, so you can
+tweak them and regenerate. The geometry is built from axis-aligned boxes
+(added or cut away in order), which keeps the generator dependency-free
+and always produces a closed, printable mesh.
+"""
+from __future__ import annotations
+
+import struct
+from pathlib import Path
+
+import numpy as np
+
+# ----------------------------------------------------------------------------
+# PARAMETERS
+# ----------------------------------------------------------------------------
+PANEL_W, PANEL_H, PANEL_T = 170.2, 111.2, 1.2     # Waveshare 7.5" V2 raw panel
+ACTIVE_W, ACTIVE_H = 163.2, 97.92                  # visible pixel area
+FIT = 0.4                                          # clearance around the panel
+
+# Window in the front. Centred and slightly taller than the active area, so
+# every pixel shows even if the active area sits off-centre vertically (the
+# ribbon-cable edge has a wider border). Measure your panel and tighten
+# WINDOW_H / WINDOW_Y_OFFSET if you want a snugger border.
+WINDOW_W = ACTIVE_W + 1.0
+WINDOW_H = PANEL_H - 6.0
+WINDOW_Y_OFFSET = 0.0          # + moves the window up
+
+BAND = 9.0          # frame border from panel pocket to outside edge
+FRONT_T = 2.0       # thickness of the front face
+LOCATOR_D = 3.0     # depth of the ledge that locates the panel
+DEPTH = 30.0        # total depth of the front part (front face to back rim)
+WALL = 2.4          # outer wall thickness
+COVER_T = 2.5       # back cover thickness
+COVER_FIT = 0.3     # gap between cover and walls
+
+COLUMN = 6.0        # corner screw columns (M3 self-tapping, 4x ~12 mm)
+COLUMN_HOLE = 2.6   # pilot hole for M3 into plastic
+COLUMN_HOLE_D = 12.0
+COVER_HOLE = 3.4    # clearance hole in the cover for M3
+
+FFC_NOTCH_W = 120.0  # gap in the bottom ledge for the panel's ribbon cable
+
+CABLE_NOTCH_W, CABLE_NOTCH_D = 14.0, 12.0   # micro-USB cable exit (bottom wall)
+
+# Raspberry Pi Zero 2 WH mount (on the back cover, facing the panel)
+PI_HOLES_X, PI_HOLES_Y = 58.0, 23.0
+PI_CENTER = (0.0, -25.0)       # ports can face down: rotate the Pi on the posts
+PI_STANDOFF, PI_STANDOFF_H, PI_HOLE = 5.0, 4.0, 2.0   # M2.5 self-tapping
+
+# Posts on the cover that rest (via a felt/foam pad) on the panel's back
+PANEL_POSTS = [(-70, 35), (70, 35), (-70, -35), (70, -35)]
+POST = 6.0
+POST_GAP = 0.8      # leave room for a thin foam pad between post and panel
+
+# Wall-mount keyholes (screw head <= 8 mm, shank <= 4 mm)
+KEYHOLES = [(-45.0, 42.0), (45.0, 42.0)]
+
+# ----------------------------------------------------------------------------
+# Derived sizes
+# ----------------------------------------------------------------------------
+POCKET_W, POCKET_H = PANEL_W + 2 * FIT, PANEL_H + 2 * FIT
+OUT_W, OUT_H = POCKET_W + 2 * BAND, POCKET_H + 2 * BAND
+HX, HY = OUT_W / 2, OUT_H / 2
+IN_X, IN_Y = HX - WALL, HY - WALL                  # inner face of outer wall
+COL_CX, COL_CY = IN_X - COLUMN / 2, IN_Y - COLUMN / 2
+COVER_Z0 = DEPTH - COVER_T                          # cover sits inside the rim
+PANEL_BACK_Z = FRONT_T + PANEL_T
+
+
+def box(x0, x1, y0, y1, z0, z1):
+    return (min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1), min(z0, z1), max(z0, z1))
+
+
+def cbox(cx, cy, w, h, z0, z1):
+    return box(cx - w / 2, cx + w / 2, cy - h / 2, cy + h / 2, z0, z1)
+
+
+# ----------------------------------------------------------------------------
+# Part definitions: ordered list of (+1 add / -1 cut, box), in assembly
+# coordinates: x right, y up (seen from the front), z = depth from the front.
+# ----------------------------------------------------------------------------
+def front_part():
+    ops = []
+    # outer shell walls, full depth
+    ops.append((+1, box(-HX, HX, -HY, HY, 0, DEPTH)))
+    ops.append((-1, box(-IN_X, IN_X, -IN_Y, IN_Y, FRONT_T + LOCATOR_D, DEPTH + 1)))
+    # front face + locator ledge (solid band around the panel pocket)
+    ops.append((-1, cbox(0, 0, POCKET_W, POCKET_H, FRONT_T, DEPTH + 1)))
+    # window
+    ops.append((-1, cbox(0, WINDOW_Y_OFFSET, WINDOW_W, WINDOW_H, -1, FRONT_T + 1)))
+    # notch in the bottom ledge for the panel's ribbon cable
+    ops.append((-1, box(-FFC_NOTCH_W / 2, FFC_NOTCH_W / 2, -IN_Y, -POCKET_H / 2 + 0.01,
+                        FRONT_T, DEPTH + 1)))
+    # corner screw columns (stop where the cover starts)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            ops.append((+1, cbox(sx * COL_CX, sy * COL_CY, COLUMN, COLUMN, 0, COVER_Z0)))
+            ops.append((-1, cbox(sx * COL_CX, sy * COL_CY, COLUMN_HOLE, COLUMN_HOLE,
+                                 COVER_Z0 - COLUMN_HOLE_D, COVER_Z0 + 1)))
+    # micro-USB cable notch, open at the back rim, bottom wall centre
+    ops.append((-1, box(-CABLE_NOTCH_W / 2, CABLE_NOTCH_W / 2, -HY - 1, -IN_Y + 0.01,
+                        DEPTH - CABLE_NOTCH_D, DEPTH + 1)))
+    return ops
+
+
+def back_part():
+    ops = []
+    cw, ch = 2 * IN_X - 2 * COVER_FIT, 2 * IN_Y - 2 * COVER_FIT
+    ops.append((+1, cbox(0, 0, cw, ch, COVER_Z0, DEPTH)))
+    # screw clearance holes over the corner columns
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            ops.append((-1, cbox(sx * COL_CX, sy * COL_CY, COVER_HOLE, COVER_HOLE,
+                                 COVER_Z0 - 1, DEPTH + 1)))
+    # posts resting on the back of the panel
+    for (px, py) in PANEL_POSTS:
+        ops.append((+1, cbox(px, py, POST, POST, PANEL_BACK_Z + POST_GAP, COVER_Z0 + 0.01)))
+    # Pi Zero standoffs with pilot holes
+    pcx, pcy = PI_CENTER
+    for dx in (-PI_HOLES_X / 2, PI_HOLES_X / 2):
+        for dy in (-PI_HOLES_Y / 2, PI_HOLES_Y / 2):
+            ops.append((+1, cbox(pcx + dx, pcy + dy, PI_STANDOFF, PI_STANDOFF,
+                                 COVER_Z0 - PI_STANDOFF_H, COVER_Z0 + 0.01)))
+            ops.append((-1, cbox(pcx + dx, pcy + dy, PI_HOLE, PI_HOLE,
+                                 COVER_Z0 - PI_STANDOFF_H - 1, DEPTH - 1.0)))
+    # wall-mount keyholes: wide square entry with a narrow slot above it
+    for (kx, ky) in KEYHOLES:
+        ops.append((-1, cbox(kx, ky - 5, 9, 9, COVER_Z0 - 1, DEPTH + 1)))
+        ops.append((-1, box(kx - 2.2, kx + 2.2, ky - 5, ky + 7, COVER_Z0 - 1, DEPTH + 1)))
+    # vents: slots above the Pi and near the bottom corners
+    for i in range(7):
+        x = -30 + i * 10
+        ops.append((-1, box(x - 1.5, x + 1.5, 2, 24, COVER_Z0 - 1, DEPTH + 1)))
+    for x0 in (-75, 45):
+        for i in range(4):
+            x = x0 + i * 8
+            ops.append((-1, box(x - 1.5, x + 1.5, -55, -42, COVER_Z0 - 1, DEPTH + 1)))
+    return ops
+
+
+# ----------------------------------------------------------------------------
+# Box-CSG -> watertight triangle mesh
+# ----------------------------------------------------------------------------
+def voxelize(ops):
+    xs = sorted({round(v, 4) for _, b in ops for v in (b[0], b[1])})
+    ys = sorted({round(v, 4) for _, b in ops for v in (b[2], b[3])})
+    zs = sorted({round(v, 4) for _, b in ops for v in (b[4], b[5])})
+    xs, ys, zs = np.array(xs), np.array(ys), np.array(zs)
+    cx, cy, cz = (xs[:-1] + xs[1:]) / 2, (ys[:-1] + ys[1:]) / 2, (zs[:-1] + zs[1:]) / 2
+    filled = np.zeros((len(cx), len(cy), len(cz)), dtype=bool)
+    for sign, (x0, x1, y0, y1, z0, z1) in ops:
+        mx = (cx > x0) & (cx < x1)
+        my = (cy > y0) & (cy < y1)
+        mz = (cz > z0) & (cz < z1)
+        sel = mx[:, None, None] & my[None, :, None] & mz[None, None, :]
+        filled = filled | sel if sign > 0 else filled & ~sel
+    return xs, ys, zs, filled
+
+
+def mesh_from_voxels(xs, ys, zs, filled):
+    tris = []
+    padded = np.pad(filled, 1)
+    for axis in range(3):
+        for direction in (-1, 1):
+            nb = np.roll(padded, -direction, axis=axis)[1:-1, 1:-1, 1:-1]
+            faces = np.argwhere(filled & ~nb)
+            for i, j, k in faces:
+                x0, x1, y0, y1, z0, z1 = xs[i], xs[i + 1], ys[j], ys[j + 1], zs[k], zs[k + 1]
+                if axis == 0:
+                    x = x1 if direction > 0 else x0
+                    q = [(x, y0, z0), (x, y1, z0), (x, y1, z1), (x, y0, z1)]
+                elif axis == 1:
+                    y = y1 if direction > 0 else y0
+                    q = [(x0, y, z0), (x0, y, z1), (x1, y, z1), (x1, y, z0)]
+                else:
+                    z = z1 if direction > 0 else z0
+                    q = [(x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z)]
+                if direction < 0:
+                    q = q[::-1]
+                tris.append((q[0], q[1], q[2]))
+                tris.append((q[0], q[2], q[3]))
+    return np.array(tris, dtype=np.float64)
+
+
+def write_stl(path, tris, name):
+    with open(path, "wb") as f:
+        f.write(name.encode()[:80].ljust(80, b"\0"))
+        f.write(struct.pack("<I", len(tris)))
+        for t in tris:
+            n = np.cross(t[1] - t[0], t[2] - t[0])
+            n = n / (np.linalg.norm(n) or 1)
+            f.write(struct.pack("<12fH", *n, *t[0], *t[1], *t[2], 0))
+
+
+def build(ops, flip_for_print=False):
+    xs, ys, zs, filled = voxelize(ops)
+    tris = mesh_from_voxels(xs, ys, zs, filled)
+    if flip_for_print:
+        # rotate 180 deg about X so the cover's outside face is on the bed
+        tris[..., 1] *= -1
+        tris[..., 2] = DEPTH - tris[..., 2]
+    tris[..., 2] -= tris[..., 2].min()
+    return tris
+
+
+def main():
+    here = Path(__file__).parent
+    front = build(front_part())
+    back = build(back_part(), flip_for_print=True)
+    write_stl(here / "case_front.stl", front, "flight radar case front")
+    write_stl(here / "case_back.stl", back, "flight radar case back")
+    for name, t in (("front", front), ("back", back)):
+        size = t.reshape(-1, 3).max(0) - t.reshape(-1, 3).min(0)
+        print(f"case_{name}.stl: {len(t)} triangles, "
+              f"{size[0]:.1f} x {size[1]:.1f} x {size[2]:.1f} mm")
+
+
+if __name__ == "__main__":
+    main()

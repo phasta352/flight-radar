@@ -22,7 +22,7 @@ Flight data comes from free community ADS-B networks ([airplanes.live](https://a
 | **Waveshare 7.5inch e-Paper HAT (V2)**, 800×480, black/white | The "HAT" version plugs straight onto the Pi's pins. Other Waveshare sizes also work (see section 6). |
 | **microSD card**, 16 GB or larger | |
 | **Power supply** | Zero 2 W: 5 V / 2.5 A **micro-USB**. Pi 4/5: the official USB-C supply. |
-| Optional: a photo frame | Many people mount the 7.5" panel in an IKEA-style frame. |
+| Optional: a case or frame | Print the ready-made case in [`case/`](case/) (no supports needed), or use an IKEA RÖDALM 13×18 cm frame. |
 
 ## 2. Assemble the hardware (power OFF)
 
@@ -131,6 +131,7 @@ flightradar/
   display.py    "preview" (saves PNG) and "waveshare" (real screen) drivers
   sample_data.json   fake aircraft for --demo
 install.sh      one-time Raspberry Pi setup + systemd service
+case/           3D-printable case (STL files + generator script)
 ```
 
 Please respect the data providers: the free APIs are for **non-commercial use** and are rate-limited (about 1 request/second). This app makes about one request a minute. If you enjoy the app, consider [feeding data](https://airplanes.live) back to the network with a cheap USB SDR receiver.
