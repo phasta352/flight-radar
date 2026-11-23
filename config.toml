@@ -9,7 +9,7 @@ latitude = 49.6116
 longitude = 6.1319
 
 [filter]
-radius_km = 15            # how far around you to look (10-15 km suits living near Findel)
+radius_km = 12            # how far around you to look (12 km shows all of Findel from Gasperich)
 min_altitude_ft = 0       # e.g. 500 to hide low traffic / helicopters
 max_altitude_ft = 60000
 include_ground = false    # show aircraft taxiing at airports?

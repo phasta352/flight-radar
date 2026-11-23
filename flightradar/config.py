@@ -8,7 +8,7 @@ from pathlib import Path
 DEFAULTS = {
     "location": {"name": "Home", "latitude": 49.6116, "longitude": 6.1319},
     "filter": {
-        "radius_km": 15,
+        "radius_km": 12,
         "min_altitude_ft": 0,
         "max_altitude_ft": 60000,
         "include_ground": False,
