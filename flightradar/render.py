@@ -20,7 +20,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .data import Snapshot
+from .data import Snapshot, bearing_deg, distance_km
 
 BLACK, WHITE = 0, 255
 
@@ -127,6 +127,8 @@ class Renderer:
         self.f_small = _font(13)
         self.f_badge = _font(13, bold=True)
         self.f_city = _font(14)
+        self.f_tiny = _font(10, bold=True)
+        self.featured = None
         # "nearest" mode
         self.f_big_call = _font(38, bold=True)
         self.f_big_code = _font(34, bold=True)
@@ -134,12 +136,12 @@ class Renderer:
         self.f_value = _font(20, bold=True)
 
     def render(self, snap: Snapshot, width: int, height: int) -> Image.Image:
-        if self.mode == "nearest":
-            # feature the plane that's about to pass overhead, else the nearest
-            soon = sorted((a for a in snap.aircraft if _soon(a)), key=lambda a: a.overhead_in)
-            if soon and soon[0] is not snap.aircraft[0]:
-                rest = [a for a in snap.aircraft if a is not soon[0]]
-                snap = dataclasses.replace(snap, aircraft=[soon[0]] + rest)
+        # The featured plane: the next to pass overhead, else the nearest.
+        soon = sorted((a for a in snap.aircraft if _soon(a)), key=lambda a: a.overhead_in)
+        self.featured = soon[0] if soon else (snap.aircraft[0] if snap.aircraft else None)
+        if self.mode == "nearest" and soon and soon[0] is not snap.aircraft[0]:
+            rest = [a for a in snap.aircraft if a is not soon[0]]
+            snap = dataclasses.replace(snap, aircraft=[soon[0]] + rest)
         img = Image.new("1", (width, height), WHITE)
         d = ImageDraw.Draw(img)
         header_h, footer_h = 38, 24
@@ -188,6 +190,29 @@ class Renderer:
             d.line([cx + inner * math.sin(a), cy - inner * math.cos(a),
                     cx + r_px * math.sin(a), cy - r_px * math.cos(a)], fill=BLACK, width=2)
         d.text((cx, cy - r_px - 4), "N", font=self.f_badge, fill=BLACK, anchor="mb")
+        # map: runways under everything else
+        loc = self.cfg["location"]
+
+        def to_px(lat, lon):
+            dist = distance_km(loc["latitude"], loc["longitude"], lat, lon)
+            b = math.radians(bearing_deg(loc["latitude"], loc["longitude"], lat, lon))
+            rr = dist / radius_km * r_px
+            return cx + rr * math.sin(b), cy - rr * math.cos(b), dist
+
+        for rw in self.cfg.get("map", {}).get("runways", []):
+            self._runway(d, rw, to_px, radius_km, r_px)
+
+        # featured plane's trail: dotted line through its recent positions
+        f = self.featured
+        if f is not None and self.cfg.get("map", {}).get("trail", True) and f.trail:
+            pts = [to_px(f.lat, f.lon)] + [to_px(lat, lon) for lat, lon in reversed(f.trail)]
+            path = []
+            for x, y, dist in pts:
+                if dist > radius_km:
+                    break
+                path.append((x, y))
+            self._dotted(d, path)
+
         # home marker
         d.line([cx - 6, cy, cx + 6, cy], fill=BLACK, width=2)
         d.line([cx, cy - 6, cx, cy + 6], fill=BLACK, width=2)
@@ -212,6 +237,42 @@ class Renderer:
                 self._dashed(d, px, py, cx, cy)
             if numbered:
                 self._badge(d, px + size + 9, py - size - 2, idx + 1)
+
+    def _runway(self, d, rw, to_px, radius_km, r_px):
+        (lat1, lon1), (lat2, lon2) = rw["ends"]
+        x1, y1, d1 = to_px(lat1, lon1)
+        x2, y2, d2 = to_px(lat2, lon2)
+        if min(d1, d2) > radius_km:
+            return
+        length = math.hypot(x2 - x1, y2 - y1) or 1
+        ux, uy = (x2 - x1) / length, (y2 - y1) / length     # along the runway
+        half = max(2.5, rw.get("width_m", 60) / 1000 / radius_km * r_px / 2)
+        px, py = -uy * half, ux * half                       # across the runway
+        d.polygon([(x1 + px, y1 + py), (x2 + px, y2 + py), (x2 - px, y2 - py), (x1 - px, y1 - py)],
+                  fill=WHITE, outline=BLACK)
+        labels = rw.get("labels") or []
+        for (x, y, sgn), lab in zip(((x1, y1, -1), (x2, y2, 1)), labels):
+            d.text((x + ux * sgn * 10, y + uy * sgn * 10), lab, font=self.f_tiny, fill=BLACK, anchor="mm")
+        if rw.get("name"):
+            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+            nx, ny = (px, py) if py > 0 else (-px, -py)      # put the name below the runway
+            norm = math.hypot(nx, ny) or 1
+            d.text((mx + nx / norm * 11, my + ny / norm * 11), rw["name"], font=self.f_tiny,
+                   fill=BLACK, anchor="mm")
+
+    @staticmethod
+    def _dotted(d, path, spacing=6, r=1.4):
+        """Small dots every `spacing` pixels along a polyline."""
+        carry = 0.0
+        for (x0, y0), (x1, y1) in zip(path, path[1:]):
+            seg = math.hypot(x1 - x0, y1 - y0)
+            pos = carry
+            while pos < seg:
+                t = pos / seg
+                x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+                d.ellipse([x - r, y - r, x + r, y + r], fill=BLACK)
+                pos += spacing
+            carry = pos - seg
 
     @staticmethod
     def _dashed(d, x0, y0, x1, y1, dash=5, gap=4):

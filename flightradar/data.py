@@ -20,7 +20,8 @@ import json
 import logging
 import math
 import time
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import requests
@@ -38,6 +39,8 @@ SOURCES = {
 
 ROUTE_URL = "https://api.adsbdb.com/v0/callsign/{callsign}"
 USER_AGENT = "pi-eink-flightradar/0.1 (hobby project)"
+
+TRAIL_SECONDS = 300        # how much of each plane's recent path to remember
 
 EMERGENCY_SQUAWKS = {"7500": "HIJACK", "7600": "RADIO FAIL", "7700": "EMERGENCY"}
 
@@ -78,6 +81,7 @@ class Aircraft:
     route: Route | None = None
     cpa_km: float | None = None        # closest it will come to you on its current path
     overhead_in: float | None = None   # seconds until it passes over you, if it will
+    trail: list = field(default_factory=list)   # recent positions [(lat, lon), ...], oldest first
 
     @property
     def label(self) -> str:
@@ -212,6 +216,7 @@ class FlightFetcher:
         self.session = requests.Session()
         self.session.headers["User-Agent"] = USER_AGENT
         self._route_cache: dict[str, tuple[Route | None, float]] = {}
+        self._history: dict[str, deque] = {}   # hex -> deque[(time, lat, lon)]
 
     def fetch(self) -> Snapshot:
         loc = self.cfg["location"]
@@ -237,6 +242,7 @@ class FlightFetcher:
                 continue
             raw_list = payload.get("ac") or payload.get("aircraft") or []
             aircraft = [a for a in (parse_aircraft(r, lat, lon) for r in raw_list) if a]
+            self._add_trails(aircraft)
             aircraft = filter_and_sort(aircraft, self.cfg)
             if self.cfg["data"]["lookup_routes"]:
                 n = 1 if self.cfg["display"]["mode"] == "nearest" else self.cfg["display"]["max_list"]
@@ -244,6 +250,20 @@ class FlightFetcher:
             log.info("Got %d aircraft from %s", len(aircraft), name)
             return Snapshot(aircraft, name, time.time())
         return Snapshot([], "", time.time(), error="; ".join(errors) or "no sources")
+
+    def _add_trails(self, aircraft: list[Aircraft]) -> None:
+        """Remember each plane's recent positions so we can draw its trail."""
+        now = time.time()
+        for ac in aircraft:
+            if not ac.hex:
+                continue
+            hist = self._history.setdefault(ac.hex, deque(maxlen=120))
+            hist.append((now, ac.lat, ac.lon))
+            while hist and now - hist[0][0] > TRAIL_SECONDS:
+                hist.popleft()
+            ac.trail = [(lat, lon) for _, lat, lon in list(hist)[:-1]]
+        for h in [h for h, d in self._history.items() if not d or now - d[-1][0] > 2 * TRAIL_SECONDS]:
+            del self._history[h]
 
     # Route lookup: callsign -> origin/destination airports + cities. Cached, because routes rarely change
     # and we only want to make a handful of extra requests per refresh.
@@ -306,6 +326,16 @@ class DemoFetcher:
             )
             if a
         ]
+        for ac in aircraft:   # fake trail: where it would have been, every 20 s
+            if ac.speed_kt and ac.track is not None and not ac.on_ground:
+                v = ac.speed_kt * KM_PER_NM / 3600
+                pts = []
+                for t in range(240, 0, -20):
+                    back = v * t
+                    dlat = -back * math.cos(math.radians(ac.track)) / 111.32
+                    dlon = -back * math.sin(math.radians(ac.track)) / (111.32 * math.cos(math.radians(ac.lat)))
+                    pts.append((ac.lat + dlat, ac.lon + dlon))
+                ac.trail = pts
         aircraft = filter_and_sort(aircraft, self.cfg)
         for ac in aircraft:
             r = self.sample.get("routes", {}).get(ac.callsign)

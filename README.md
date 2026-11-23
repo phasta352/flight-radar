@@ -87,6 +87,7 @@ Everything lives in [`config.toml`](config.toml). The settings you're most likel
 - **`radius_km`**: how far around you to look. 15–30 km feels like "overhead"; 50+ km shows more traffic. Near an airport, 10–15 km keeps the radar from getting crowded.
 - **`min_altitude_ft`**: raise it to hide helicopters and light aircraft.
 - **`[overhead]`**: makes the screen match what you hear. The app checks flight data every 10 s and predicts when each plane will pass over you. About 30 s before one arrives (`lead_seconds`), it redraws the screen with an **"overhead ~30 s"** tag, a ring around the plane on the radar, and in `nearest` mode that plane featured. `radius_km` (default 1.5) sets how close its path must come to count as "overhead": raise it if you live beside a flight path, lower it if too many planes trigger. Each early redraw is logged, so `journalctl -u flightradar -f` shows how often it fires.
+- **`[map]`**: draws the Findel runway (06/24) to scale on the radar, and a dotted trail showing the last 5 minutes of the featured plane's path (the next plane due overhead, otherwise the nearest). Add more `[[map.runways]]` blocks for other airports, or set `trail = false` to hide the trail.
 - **`refresh_seconds`**: how often the screen redraws (default 45, minimum 30). A cruising jet covers about 14 km a minute, so 30–60 s keeps the radar close to reality. Each redraw makes the e-ink flash briefly; raise it if that bothers you.
 - **`model`**: the Waveshare driver name. Some common ones:
 

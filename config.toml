@@ -9,7 +9,7 @@ latitude = 49.6116
 longitude = 6.1319
 
 [filter]
-radius_km = 25            # how far around you to look
+radius_km = 15            # how far around you to look (10-15 km suits living near Findel)
 min_altitude_ft = 0       # e.g. 500 to hide low traffic / helicopters
 max_altitude_ft = 60000
 include_ground = false    # show aircraft taxiing at airports?
@@ -47,3 +47,14 @@ preview_path = "preview.png"
 refresh_seconds = 45      # 30-60 s keeps fast jets on the radar (minimum 30). Each refresh flashes the e-ink briefly
 units = "aviation"        # "aviation" = feet + knots, "metric" = metres + km/h
 rotate = 0                # 0 or 180 if your screen is mounted upside down
+
+[map]
+trail = true                # dotted line showing where the featured plane has come from
+
+# Runways drawn on the radar (default: Luxembourg Findel, runway 06/24).
+# Add more [[map.runways]] blocks for other airports, or delete this one.
+[[map.runways]]
+name = "LUX"
+ends = [[49.617669, 6.187456], [49.635528, 6.235556]]   # runway 06 end, runway 24 end
+labels = ["06", "24"]
+width_m = 60
