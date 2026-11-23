@@ -1,11 +1,13 @@
 """Generates a 3D-printable two-part case for the flight radar:
 
-    Waveshare 7.5" e-Paper HAT (V2, 800x480) + Raspberry Pi Zero 2 WH
+    Waveshare 7.5" e-Paper HAT (V2, 800x480) + Raspberry Pi 3 A+ or Pi Zero
 
 Outputs (in this folder):
-    case_front.stl   front frame: holds the panel, print FACE DOWN
-    case_back.stl    back cover: Pi mount, panel supports, wall-mount
-                     keyholes, vents. Print OUTSIDE FACE DOWN.
+    case_front.stl          front frame: holds the panel, print FACE DOWN
+    case_back_pi3a.stl      back cover for a Raspberry Pi 3 Model A+
+    case_back_pizero.stl    back cover for a Pi Zero / Zero 2 (W/WH)
+    (back covers: Pi mount, panel supports, wall-mount keyholes, vents.
+     Print OUTSIDE FACE DOWN. Print only the one for your Pi.)
 
 Run:  python3 make_case.py     (needs only numpy)
 
@@ -53,9 +55,16 @@ FFC_NOTCH_W = 120.0  # gap in the bottom ledge for the panel's ribbon cable
 
 CABLE_NOTCH_W, CABLE_NOTCH_D = 14.0, 12.0   # micro-USB cable exit (bottom wall)
 
-# Raspberry Pi Zero 2 WH mount (on the back cover, facing the panel)
-PI_HOLES_X, PI_HOLES_Y = 58.0, 23.0
-PI_CENTER = (0.0, -25.0)       # ports can face down: rotate the Pi on the posts
+# Raspberry Pi mount (on the back cover, facing the panel). The Pi sits near
+# the bottom edge with its GPIO header - and so the display's driver HAT -
+# towards the bottom, close to where the panel's ribbon cable comes out.
+# Its ports then face up, with room for the micro-USB plug.
+BOARDS = {
+    #          board w x h (mm)   mounting holes (centre to centre)
+    "pi3a":   {"size": (65.0, 56.5), "holes": (58.0, 49.0)},   # Pi 3 Model A+
+    "pizero": {"size": (65.0, 30.0), "holes": (58.0, 23.0)},   # Pi Zero / Zero 2
+}
+PI_EDGE_GAP = 3.0   # gap between the board's bottom edge and the cover's edge
 PI_STANDOFF, PI_STANDOFF_H, PI_HOLE = 5.0, 4.0, 2.0   # M2.5 self-tapping
 
 # Posts on the cover that rest (via a felt/foam pad) on the panel's back
@@ -114,8 +123,10 @@ def front_part():
     return ops
 
 
-def back_part():
+def back_part(board="pi3a"):
     ops = []
+    bw, bh = BOARDS[board]["size"]
+    holes_x, holes_y = BOARDS[board]["holes"]
     cw, ch = 2 * IN_X - 2 * COVER_FIT, 2 * IN_Y - 2 * COVER_FIT
     ops.append((+1, cbox(0, 0, cw, ch, COVER_Z0, DEPTH)))
     # screw clearance holes over the corner columns
@@ -126,10 +137,10 @@ def back_part():
     # posts resting on the back of the panel
     for (px, py) in PANEL_POSTS:
         ops.append((+1, cbox(px, py, POST, POST, PANEL_BACK_Z + POST_GAP, COVER_Z0 + 0.01)))
-    # Pi Zero standoffs with pilot holes
-    pcx, pcy = PI_CENTER
-    for dx in (-PI_HOLES_X / 2, PI_HOLES_X / 2):
-        for dy in (-PI_HOLES_Y / 2, PI_HOLES_Y / 2):
+    # Pi standoffs with pilot holes
+    pcx, pcy = 0.0, -(IN_Y - COVER_FIT) + PI_EDGE_GAP + bh / 2
+    for dx in (-holes_x / 2, holes_x / 2):
+        for dy in (-holes_y / 2, holes_y / 2):
             ops.append((+1, cbox(pcx + dx, pcy + dy, PI_STANDOFF, PI_STANDOFF,
                                  COVER_Z0 - PI_STANDOFF_H, COVER_Z0 + 0.01)))
             ops.append((-1, cbox(pcx + dx, pcy + dy, PI_HOLE, PI_HOLE,
@@ -216,11 +227,11 @@ def build(ops, flip_for_print=False):
 
 def main():
     here = Path(__file__).parent
-    front = build(front_part())
-    back = build(back_part(), flip_for_print=True)
-    write_stl(here / "case_front.stl", front, "flight radar case front")
-    write_stl(here / "case_back.stl", back, "flight radar case back")
-    for name, t in (("front", front), ("back", back)):
+    parts = {"front": build(front_part())}
+    for board in BOARDS:
+        parts[f"back_{board}"] = build(back_part(board), flip_for_print=True)
+    for name, t in parts.items():
+        write_stl(here / f"case_{name}.stl", t, f"flight radar case {name}")
         size = t.reshape(-1, 3).max(0) - t.reshape(-1, 3).min(0)
         print(f"case_{name}.stl: {len(t)} triangles, "
               f"{size[0]:.1f} x {size[1]:.1f} x {size[2]:.1f} mm")

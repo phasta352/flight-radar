@@ -18,7 +18,7 @@ Flight data comes from free community ADS-B networks ([airplanes.live](https://a
 
 | Part | Notes |
 |---|---|
-| **Raspberry Pi Zero 2 WH** | The "H" means the GPIO pin header comes pre-soldered, so you don't need to solder anything. A Pi 3, 4 or 5 works too. |
+| **Raspberry Pi Zero 2 WH** or **Pi 3 Model A+** | Both come with the GPIO pin header pre-soldered, so you don't need to solder anything (with the Zero, make sure it's the "WH"). A Pi 3 B, 4 or 5 works too, but won't fit the case. |
 | **Waveshare 7.5inch e-Paper HAT (V2)**, 800×480, black/white | The "HAT" version plugs straight onto the Pi's pins. Other Waveshare sizes also work (see section 6). |
 | **microSD card**, 16 GB or larger | |
 | **Power supply** | Zero 2 W: 5 V / 2.5 A **micro-USB**. Pi 4/5: the official USB-C supply. |
