@@ -10,6 +10,7 @@
     {"hex": "3944ef", "flight": "AFR1279 ", "r": "F-HBNA", "t": "A21N", "lat": 49.470, "lon": 5.980, "alt_baro": 34975, "gs": 455, "track": 205, "baro_rate": 0, "squawk": "1000"},
     {"hex": "4d2275", "flight": "", "r": "LX-HEP", "t": "EC35", "lat": 49.598, "lon": 6.112, "alt_baro": 1100, "gs": 95, "track": 18, "baro_rate": 0, "squawk": "7000"},
     {"hex": "4b1813", "flight": "SWR64Q  ", "r": "HB-JCA", "t": "BCS3", "lat": 49.800, "lon": 5.900, "alt_baro": 37000, "gs": 470, "track": 330, "baro_rate": 0, "squawk": "1000"},
+    {"hex": "4d0159", "flight": "LGL5AT  ", "r": "LX-LGG", "t": "DH8D", "lat": 49.6125, "lon": 6.0903, "alt_baro": 2400, "gs": 160, "track": 89, "baro_rate": -704, "squawk": "4640"},
     {"hex": "4d0158", "flight": "LGL999  ", "r": "LX-LGR", "t": "DH8D", "lat": 49.623, "lon": 6.204, "alt_baro": "ground", "gs": 4, "track": 90, "squawk": "4600"}
   ],
   "routes": {
@@ -18,6 +19,7 @@
     "DLH8VK": ["MUC", "Munich", "LHR", "London", "Lufthansa"],
     "EZY45TR": ["LGW", "London", "MXP", "Milan", "easyJet"],
     "BEL7PC": ["BRU", "Brussels", "VIE", "Vienna", "Brussels Airlines"],
+    "LGL5AT": ["LHR", "London", "LUX", "Luxembourg", "Luxair"],
     "LGL8008": ["LUX", "Luxembourg", "BCN", "Barcelona", "Luxair"],
     "AFR1279": ["AMS", "Amsterdam", "NCE", "Nice", "Air France"],
     "SWR64Q": ["ZRH", "Zurich", "AMS", "Amsterdam", "Swiss"]

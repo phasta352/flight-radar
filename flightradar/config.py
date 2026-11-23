@@ -18,6 +18,14 @@ DEFAULTS = {
         "lookup_routes": True,
         "timeout_seconds": 10,
     },
+    "overhead": {
+        "enabled": True,
+        "radius_km": 1.5,
+        "lead_seconds": 30,
+        "poll_seconds": 10,
+        "min_refresh_gap_seconds": 15,
+        "display_delay_seconds": 4,
+    },
     "display": {
         "driver": "preview",
         "mode": "list",

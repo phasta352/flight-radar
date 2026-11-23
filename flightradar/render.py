@@ -13,6 +13,7 @@ Layout (landscape):
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 import time
 from pathlib import Path
@@ -92,6 +93,21 @@ def _compass(deg):
     return COMPASS[int((deg + 22.5) // 45) % 8]
 
 
+SOON_S = 120   # show "overhead in ..." for planes arriving within this
+
+
+def _soon(ac):
+    return ac.overhead_in is not None and ac.overhead_in <= SOON_S
+
+
+def _fmt_eta(secs):
+    if secs < 8:
+        return "now"
+    if secs < 90:
+        return f"~{int(round(secs / 5) * 5)} s"
+    return f"~{round(secs / 60)} min"
+
+
 def _trend(ac):
     if ac.vertical_rate is None or abs(ac.vertical_rate) < 300:
         return ""
@@ -118,6 +134,12 @@ class Renderer:
         self.f_value = _font(20, bold=True)
 
     def render(self, snap: Snapshot, width: int, height: int) -> Image.Image:
+        if self.mode == "nearest":
+            # feature the plane that's about to pass overhead, else the nearest
+            soon = sorted((a for a in snap.aircraft if _soon(a)), key=lambda a: a.overhead_in)
+            if soon and soon[0] is not snap.aircraft[0]:
+                rest = [a for a in snap.aircraft if a is not soon[0]]
+                snap = dataclasses.replace(snap, aircraft=[soon[0]] + rest)
         img = Image.new("1", (width, height), WHITE)
         d = ImageDraw.Draw(img)
         header_h, footer_h = 38, 24
@@ -184,8 +206,29 @@ class Renderer:
                 d.polygon(poly, outline=BLACK, fill=WHITE)
             else:
                 d.polygon(poly, fill=BLACK)
+            if _soon(ac):   # about to pass overhead: ring + line to home
+                rr = size + 6
+                d.ellipse([px - rr, py - rr, px + rr, py + rr], outline=BLACK, width=2)
+                self._dashed(d, px, py, cx, cy)
             if numbered:
                 self._badge(d, px + size + 9, py - size - 2, idx + 1)
+
+    @staticmethod
+    def _dashed(d, x0, y0, x1, y1, dash=5, gap=4):
+        length = math.hypot(x1 - x0, y1 - y0)
+        if length < 1:
+            return
+        ux, uy = (x1 - x0) / length, (y1 - y0) / length
+        pos = 0.0
+        while pos < length:
+            end = min(pos + dash, length)
+            d.line([x0 + ux * pos, y0 + uy * pos, x0 + ux * end, y0 + uy * end], fill=BLACK, width=1)
+            pos = end + gap
+
+    def _pill(self, d, x_right, y_mid, text, font):
+        tw = d.textlength(text, font=font)
+        d.rounded_rectangle([x_right - tw - 10, y_mid - 10, x_right, y_mid + 10], radius=9, fill=BLACK)
+        d.text((x_right - 5, y_mid), text, font=font, fill=WHITE, anchor="rm")
 
     def _badge(self, d, x, y, n, r=9, inverted=False):
         bg, fg = (WHITE, BLACK) if inverted else (BLACK, WHITE)
@@ -233,11 +276,22 @@ class Renderer:
                        fill=BLACK, anchor="lm")
 
             # line 3: type · altitude · speed ....... distance
-            details = [ac.type_code, _fmt_alt(ac, units) + _trend(ac), _fmt_speed(ac, units)]
-            d.text((tx, l3), "  ·  ".join(p for p in details if p), font=self.f_detail,
-                   fill=BLACK, anchor="lm")
-            d.text((right_x, l3), f"{ac.distance_km:.1f} km", font=self.f_detail,
-                   fill=BLACK, anchor="rm")
+            details = [p for p in (ac.type_code, _fmt_alt(ac, units) + _trend(ac),
+                                   _fmt_speed(ac, units)) if p]
+            if _soon(ac):
+                right_text = f"overhead {_fmt_eta(ac.overhead_in)}"
+                right_w = d.textlength(right_text, font=self.f_badge) + 18
+            else:
+                right_w = d.textlength(f"{ac.distance_km:.1f} km", font=self.f_detail) + 10
+            # drop trailing details (speed first) if they'd run into the right-hand text
+            while len(details) > 1 and d.textlength("  ·  ".join(details), font=self.f_detail) > right_x - tx - right_w:
+                details.pop()
+            d.text((tx, l3), "  ·  ".join(details), font=self.f_detail, fill=BLACK, anchor="lm")
+            if _soon(ac):
+                self._pill(d, right_x, l3, f"overhead {_fmt_eta(ac.overhead_in)}", self.f_badge)
+            else:
+                d.text((right_x, l3), f"{ac.distance_km:.1f} km", font=self.f_detail,
+                       fill=BLACK, anchor="rm")
             if i < n - 1:
                 ly = top + row_h - 1
                 for xx in range(int(x0 + pad), int(right_x), 6):  # dotted divider
@@ -255,7 +309,13 @@ class Renderer:
         inner_w = rx - lx
         y = y0 + 14
 
-        d.text((lx, y), "NEAREST AIRCRAFT", font=self.f_label, fill=BLACK, anchor="lt")
+        if _soon(ac):
+            label = f"OVERHEAD {_fmt_eta(ac.overhead_in).upper()}" if ac.overhead_in >= 8 else "OVERHEAD NOW"
+            tw = d.textlength(label, font=self.f_badge)
+            d.rounded_rectangle([lx - 4, y - 4, lx + tw + 6, y + 15], radius=8, fill=BLACK)
+            d.text((lx + 1, y + 6), label, font=self.f_badge, fill=WHITE, anchor="lm")
+        else:
+            d.text((lx, y), "NEAREST AIRCRAFT", font=self.f_label, fill=BLACK, anchor="lt")
         if ac.emergency:
             tw = d.textlength(ac.emergency, font=self.f_badge)
             d.rectangle([rx - tw - 8, y - 3, rx, y + 15], fill=BLACK)

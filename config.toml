@@ -20,6 +20,17 @@ sources = ["airplanes.live", "adsb.fi", "adsb.lol"]
 lookup_routes = true      # look up "LUX → LHR" from the callsign (adsbdb.com)
 timeout_seconds = 10
 
+[overhead]
+# Redraw the screen shortly before a plane passes over you, so it matches
+# what you hear. Between regular refreshes, the app checks the flight data
+# every poll_seconds; the screen only redraws when a plane is about to arrive.
+enabled = true
+radius_km = 1.5             # counts as "overhead" if its path passes this close
+lead_seconds = 30           # update the screen this long before it reaches you
+poll_seconds = 10           # how often to check flight data (min 5)
+min_refresh_gap_seconds = 15  # never redraw more often than this
+display_delay_seconds = 4   # the e-ink takes ~4 s to redraw, so start that much earlier
+
 [display]
 # What to show next to the radar:
 #   "list"    = the nearest few flights (how many: max_list, 5 or 6 fits best)

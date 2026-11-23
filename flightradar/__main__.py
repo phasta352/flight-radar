@@ -46,20 +46,64 @@ def main() -> int:
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, stop)
 
+    # Overhead alerts: check the data often, but only redraw the (slow, flashy)
+    # e-ink screen on the regular interval or just before a plane arrives.
+    ov = cfg["overhead"]
+    poll = max(5, int(ov["poll_seconds"])) if ov["enabled"] else interval
+    lead = ov["lead_seconds"] + ov["display_delay_seconds"]
+    min_gap = ov["min_refresh_gap_seconds"]
+    announced: dict[str, float] = {}   # aircraft already shown as "overhead soon"
+    last_refresh = None
     last_was_empty = False
     try:
         while True:
             started = time.monotonic()
             snap = fetcher.fetch()
+            now = time.monotonic()
+            announced = {h: t for h, t in announced.items() if t > now}
+            due = [a for a in snap.aircraft
+                   if a.overhead_in is not None and a.overhead_in <= lead
+                   and a.hex not in announced]
+            since = None if last_refresh is None else now - last_refresh
+            regular = since is None or since >= interval
+            early = bool(due) and (since is None or since >= min_gap)
+            # If a plane will need an early refresh in the next few seconds,
+            # hold the regular one and do a single refresh at the right moment.
+            upcoming = [a.overhead_in - lead for a in snap.aircraft
+                        if a.overhead_in is not None and a.hex not in announced
+                        and a.overhead_in > lead]
+            if regular and not early and since is not None and upcoming \
+                    and min(upcoming) <= min_gap:
+                regular = False
             empty = not snap.aircraft
-            # Skip redundant refreshes of an empty sky: saves flashing at night.
-            if not (empty and last_was_empty and not args.once):
-                img = renderer.render(snap, display.width, display.height)
-                display.show(img)
-            last_was_empty = empty
+
+            if args.once or regular or early:
+                # Skip redundant refreshes of an empty sky: saves flashing at night.
+                if args.once or not (empty and last_was_empty):
+                    if early and not regular:
+                        log.info("Early refresh: %s overhead in ~%.0f s",
+                                 due[0].label, due[0].overhead_in)
+                    img = renderer.render(snap, display.width, display.height)
+                    display.show(img)
+                    last_refresh = now
+                    # planes already shown as arriving don't trigger another redraw
+                    for a in snap.aircraft:
+                        if a.overhead_in is not None and a.overhead_in <= lead + poll:
+                            announced[a.hex] = now + a.overhead_in + 60
+                last_was_empty = empty
             if args.once:
                 break
-            time.sleep(max(1, interval - (time.monotonic() - started)))
+            # Sleep until the next poll, or wake up exactly when a plane will be
+            # `lead` seconds away, whichever comes first.
+            wait = poll - (time.monotonic() - started)
+            if last_refresh is not None:   # don't overshoot the regular refresh
+                wait = min(wait, interval - (time.monotonic() - last_refresh))
+            for a in snap.aircraft:
+                if a.overhead_in is not None and a.hex not in announced:
+                    until = a.overhead_in - lead - (time.monotonic() - now)
+                    if 0 < until < wait:
+                        wait = until
+            time.sleep(max(1, wait))
     except KeyboardInterrupt:
         log.info("Stopping")
         if not args.once:

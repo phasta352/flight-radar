@@ -76,6 +76,8 @@ class Aircraft:
     distance_km: float = 0.0
     bearing: float = 0.0
     route: Route | None = None
+    cpa_km: float | None = None        # closest it will come to you on its current path
+    overhead_in: float | None = None   # seconds until it passes over you, if it will
 
     @property
     def label(self) -> str:
@@ -160,6 +162,26 @@ def parse_aircraft(raw: dict, home_lat: float, home_lon: float) -> Aircraft | No
     return ac
 
 
+def predict_overhead(ac: Aircraft, radius_km: float, horizon_s: float = 300) -> None:
+    """Works out when the plane will pass closest to you if it keeps flying
+    straight at its current speed ("closest point of approach"). Sets
+    ac.cpa_km, and ac.overhead_in when it will pass within radius_km."""
+    if ac.on_ground or not ac.speed_kt or ac.track is None:
+        return
+    # position relative to home in km (east, north) and velocity in km/s
+    b, t = math.radians(ac.bearing), math.radians(ac.track)
+    e, n = ac.distance_km * math.sin(b), ac.distance_km * math.cos(b)
+    v = ac.speed_kt * KM_PER_NM / 3600
+    ve, vn = v * math.sin(t), v * math.cos(t)
+    secs = -(e * ve + n * vn) / (ve * ve + vn * vn)
+    if secs < 0:                      # flying away: it is as close as it'll get
+        ac.cpa_km = ac.distance_km
+        return
+    ac.cpa_km = math.hypot(e + ve * secs, n + vn * secs)
+    if ac.cpa_km <= radius_km and secs <= horizon_s:
+        ac.overhead_in = secs
+
+
 def filter_and_sort(aircraft: list[Aircraft], cfg: dict) -> list[Aircraft]:
     f = cfg["filter"]
     out = []
@@ -173,6 +195,10 @@ def filter_and_sort(aircraft: list[Aircraft], cfg: dict) -> list[Aircraft]:
                 continue
         out.append(ac)
     out.sort(key=lambda a: a.distance_km)
+    ov = cfg.get("overhead", {})
+    if ov.get("enabled"):
+        for ac in out:
+            predict_overhead(ac, ov["radius_km"])
     return out
 
 
