@@ -6,6 +6,7 @@ Outputs (in this folder):
     case_front.stl          front frame: holds the panel, print FACE DOWN
     case_back_pi3a.stl      back cover for a Raspberry Pi 3 Model A+
     case_back_pizero.stl    back cover for a Pi Zero / Zero 2 (W/WH)
+    case_feet.stl           two slide-on feet to stand it on a desk
     (back covers: Pi mount, panel supports, wall-mount keyholes, vents.
      Print OUTSIDE FACE DOWN. Print only the one for your Pi.)
 
@@ -18,6 +19,7 @@ and always produces a closed, printable mesh.
 """
 from __future__ import annotations
 
+import math
 import struct
 from pathlib import Path
 
@@ -74,6 +76,15 @@ POST_GAP = 0.8      # leave room for a thin foam pad between post and panel
 
 # Wall-mount keyholes (screw head <= 8 mm, shank <= 4 mm)
 KEYHOLES = [(-45.0, 42.0), (45.0, 42.0)]
+
+# Desk feet: slide onto the bottom edge near each end, tilt the frame back
+FOOT_TILT = 15.0       # degrees back from vertical
+FOOT_WIDTH = 25.0      # each foot, along the frame's bottom edge
+FOOT_GRIP = 14.0       # how far the frame sits down into the foot (back side)
+FOOT_LIP = 9.0         # front lip height (stays below the window)
+FOOT_SLOT_FIT = 0.5    # extra slot width so it slides on easily
+FOOT_FLOOR = 7.0       # lifts the frame, leaving room for the cable underneath
+FOOT_WALL = 3.0
 
 # ----------------------------------------------------------------------------
 # Derived sizes
@@ -204,6 +215,87 @@ def mesh_from_voxels(xs, ys, zs, filled):
     return np.array(tris, dtype=np.float64)
 
 
+# ----------------------------------------------------------------------------
+# Desk feet: an extruded side profile (not box-based, because it's tilted)
+# ----------------------------------------------------------------------------
+def _triangulate(poly):
+    """Ear clipping for a simple counter-clockwise polygon."""
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    def inside(pt, a, b, c):
+        return cross(a, b, pt) >= 0 and cross(b, c, pt) >= 0 and cross(c, a, pt) >= 0
+
+    idx = list(range(len(poly)))
+    tris = []
+    while len(idx) > 3:
+        for k in range(len(idx)):
+            i0, i1, i2 = idx[k - 1], idx[k], idx[(k + 1) % len(idx)]
+            a, b, c = poly[i0], poly[i1], poly[i2]
+            if cross(a, b, c) <= 1e-9:
+                continue
+            if any(inside(poly[j], a, b, c) for j in idx if j not in (i0, i1, i2)):
+                continue
+            tris.append((i0, i1, i2))
+            idx.pop(k)
+            break
+        else:
+            raise ValueError("could not triangulate profile")
+    tris.append(tuple(idx))
+    return tris
+
+
+def _prism(poly, z0, z1):
+    """Closed mesh: polygon (x, y) extruded from z0 to z1."""
+    out = []
+    for a, b, c in _triangulate(poly):
+        out.append(((*poly[a], z1), (*poly[b], z1), (*poly[c], z1)))       # top
+        out.append(((*poly[a], z0), (*poly[c], z0), (*poly[b], z0)))       # bottom
+    n = len(poly)
+    for i in range(n):
+        p, q = poly[i], poly[(i + 1) % n]
+        out.append(((*p, z0), (*q, z0), (*q, z1)))
+        out.append(((*p, z0), (*q, z1), (*p, z1)))
+    return out
+
+
+def foot_profile():
+    """Side view of one foot (u = front-to-back, v = up), counter-clockwise:
+    a U-shaped channel for the frame's bottom edge, tilted back, sitting on
+    a solid base that runs back along the desk for stability."""
+    th = math.radians(FOOT_TILT)
+    slot = DEPTH + FOOT_SLOT_FIT
+    w, f = FOOT_WALL, FOOT_FLOOR
+
+    def R(s_, t):                    # channel coords -> side view (top leans back)
+        return (s_ * math.cos(th) + t * math.sin(th), -s_ * math.sin(th) + t * math.cos(th))
+
+    lowest = R(slot + w, -f)[1]      # leaning back, the back-bottom corner is lowest
+    P = lambda s_, t: (R(s_, t)[0], R(s_, t)[1] - lowest)
+    base_top = 4.0
+    b0, b1 = P(slot + w, -f), P(slot + w, FOOT_GRIP)     # back wall, outside edge
+    q = (b0[0] + (b1[0] - b0[0]) * (base_top - b0[1]) / (b1[1] - b0[1]), base_top)
+    tail = b1[0] + 30.0
+    front = P(-w, -f)
+    return [
+        (front[0], 0.0), (tail, 0.0), (tail, base_top), q,           # base on the desk
+        b1, P(slot, FOOT_GRIP), P(slot, 0), P(0, 0),                 # back wall + floor
+        P(0, FOOT_LIP), P(-w, FOOT_LIP), front,                      # front lip
+    ]
+
+
+def feet_part():
+    prof = foot_profile()
+    us = [u for u, _ in prof]
+    span = max(us) - min(us)
+    tris = []
+    for dx in (0.0, span + 15):                  # two feet side by side
+        tris += _prism([(u + dx, v) for u, v in prof], 0.0, FOOT_WIDTH)
+    t = np.array(tris, dtype=np.float64)
+    t[..., 0] -= t[..., 0].min()
+    return t
+
+
 def write_stl(path, tris, name):
     with open(path, "wb") as f:
         f.write(name.encode()[:80].ljust(80, b"\0"))
@@ -230,6 +322,7 @@ def main():
     parts = {"front": build(front_part())}
     for board in BOARDS:
         parts[f"back_{board}"] = build(back_part(board), flip_for_print=True)
+    parts["feet"] = feet_part()
     for name, t in parts.items():
         write_stl(here / f"case_{name}.stl", t, f"flight radar case {name}")
         size = t.reshape(-1, 3).max(0) - t.reshape(-1, 3).min(0)

@@ -9,6 +9,7 @@ Two parts, no supports needed. Print the front frame plus **one** back cover, th
 | `case_front.stl` | Front frame: window, panel pocket, screw columns | 189 × 130 × 30 mm | **Front face down** (as exported) |
 | `case_back_pi3a.stl` | Back cover for a **Raspberry Pi 3 Model A+**: Pi posts, 4 panel supports, 2 wall-mount keyholes, vents | 184 × 125 × 26 mm | **Outside face down** (as exported) |
 | `case_back_pizero.stl` | Same back cover, with posts for a **Pi Zero / Zero 2 (W/WH)** | 184 × 125 × 26 mm | **Outside face down** (as exported) |
+| `case_feet.stl` | Optional: two slide-on feet to stand it on a desk, tilted 15° back | 2 × ~71 × 25 × 25 mm | **Lying on their side** (as exported) |
 
 ![Where the Pi 3 A+ goes](pi3a-layout.png)
 
@@ -36,7 +37,11 @@ When ordering from a print service (e.g. Craftcloud), upload both STL files and 
 4. Connect the panel's ribbon cable to the HAT (flip the black latch up, insert, latch down).
 5. Plug the micro-USB cable into the Pi's **PWR** port and lead it out through the notch in the bottom wall.
 6. Put the cover on and fix it with the 4 M3 screws.
-7. To hang it: two screws in the wall, 90 mm apart and level. Fit the screw heads (≤ 8 mm) into the wide part of the keyholes and slide the frame down.
+7. **On a desk:** slide the two feet onto the bottom edge, one near each end (about 3–4 cm in from the corners), with the low lip at the front. The frame leans back 15°, and the power cable comes out of the notch in the middle and runs back between the feet; the frame sits about 8 mm above the desk there, so the cable isn't squashed.
+
+   ![Side view of the frame standing in a foot](feet-side-view.png)
+
+8. **On a wall** (instead of the feet): two screws in the wall, 90 mm apart and level. Fit the screw heads (≤ 8 mm) into the wide part of the keyholes and slide the frame down.
 
 ## Before you print: two things to check
 
@@ -47,7 +52,7 @@ These come from the official dimensions, but I couldn't test-fit real parts:
 
 ## Changing the design
 
-Every size is in the `PARAMETERS` block at the top of `make_case.py`. Edit and run:
+Every size is in the `PARAMETERS` block (the feet's tilt and size are `FOOT_*`) at the top of `make_case.py`. Edit and run:
 
 ```bash
 python3 make_case.py
