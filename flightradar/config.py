@@ -42,6 +42,8 @@ DEFAULTS = {
         "preview_path": "preview.png",
         "refresh_seconds": 45,
         "max_list": 6,
+        "nearest_max_altitude_ft": 5000,
+        "nearest_hold_seconds": 120,
         "units": "aviation",
         "rotate": 0,
     },

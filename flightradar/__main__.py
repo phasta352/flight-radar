@@ -59,6 +59,7 @@ def main() -> int:
         while True:
             started = time.monotonic()
             snap = fetcher.fetch()
+            renderer.observe(snap)
             now = time.monotonic()
             announced = {h: t for h, t in announced.items() if t > now}
             due = [a for a in snap.aircraft
@@ -75,7 +76,8 @@ def main() -> int:
             if regular and not early and since is not None and upcoming \
                     and min(upcoming) <= min_gap:
                 regular = False
-            empty = not snap.aircraft
+            # (in nearest mode the screen still has to change from "last heard" to "Scanning")
+            empty = not snap.aircraft and not renderer.holding()
 
             if args.once or regular or early:
                 # Skip redundant refreshes of an empty sky: saves flashing at night.

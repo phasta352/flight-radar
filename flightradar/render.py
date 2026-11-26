@@ -13,14 +13,13 @@ Layout (landscape):
 """
 from __future__ import annotations
 
-import dataclasses
 import math
 import time
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .data import Snapshot, bearing_deg, distance_km
+from .data import Snapshot, bearing_deg, distance_km, low_enough
 
 BLACK, WHITE = 0, 255
 
@@ -129,19 +128,48 @@ class Renderer:
         self.f_city = _font(14)
         self.f_tiny = _font(10, bold=True)
         self.featured = None
-        # "nearest" mode
+        # "nearest" mode: the last low plane we saw, kept on screen for a while
+        self.held = None          # Aircraft
+        self.held_at = 0.0        # when it was last seen low enough to hear
+        self.card = None          # what the nearest card shows this frame
+        self.card_live = False    # True: currently low and nearby; False: "last heard"
         self.f_big_call = _font(38, bold=True)
         self.f_big_code = _font(34, bold=True)
         self.f_label = _font(13)
         self.f_value = _font(20, bold=True)
 
+    def observe(self, snap: Snapshot) -> None:
+        """Call on every data fetch (not just every redraw) so the
+        "last heard" timer in nearest mode is accurate."""
+        if self.mode != "nearest" or snap.error:
+            return
+        low = [a for a in snap.aircraft if low_enough(a, self.cfg)]
+        soon = sorted((a for a in low if _soon(a)), key=lambda a: a.overhead_in)
+        pick = soon[0] if soon else (low[0] if low else None)
+        if pick is not None:
+            self.held, self.held_at = pick, snap.fetched_at
+
+    def holding(self, now: float | None = None) -> bool:
+        """True while the last low plane is still being shown."""
+        if self.held is None:
+            return False
+        now = time.time() if now is None else now
+        return now - self.held_at <= self.cfg["display"]["nearest_hold_seconds"]
+
     def render(self, snap: Snapshot, width: int, height: int) -> Image.Image:
-        # The featured plane: the next to pass overhead, else the nearest.
-        soon = sorted((a for a in snap.aircraft if _soon(a)), key=lambda a: a.overhead_in)
-        self.featured = soon[0] if soon else (snap.aircraft[0] if snap.aircraft else None)
-        if self.mode == "nearest" and soon and soon[0] is not snap.aircraft[0]:
-            rest = [a for a in snap.aircraft if a is not soon[0]]
-            snap = dataclasses.replace(snap, aircraft=[soon[0]] + rest)
+        if self.mode == "nearest":
+            self.observe(snap)
+            self.card, self.card_live = None, False
+            if self.held is not None and self.holding(snap.fetched_at):
+                # use the plane's latest data if it's still on the radar
+                current = next((a for a in snap.aircraft if a.hex == self.held.hex), None)
+                self.card = current or self.held
+                self.card_live = self.held_at == snap.fetched_at
+            self.featured = self.card if self.card in snap.aircraft else None
+        else:
+            # The featured plane: the next to pass overhead, else the nearest.
+            soon = sorted((a for a in snap.aircraft if _soon(a)), key=lambda a: a.overhead_in)
+            self.featured = soon[0] if soon else (snap.aircraft[0] if snap.aircraft else None)
         img = Image.new("1", (width, height), WHITE)
         d = ImageDraw.Draw(img)
         header_h, footer_h = 38, 24
@@ -224,7 +252,7 @@ class Renderer:
             dist = min(ac.distance_km / radius_km, 1.0) * r_px
             b = math.radians(ac.bearing)
             px, py = cx + dist * math.sin(b), cy - dist * math.cos(b)
-            numbered = idx < max_list
+            numbered = (ac is self.featured) if self.mode == "nearest" else idx < max_list
             size = 11 if numbered else 7
             poly = _plane_polygon(px, py, size, ac.track)
             if ac.on_ground:
@@ -236,7 +264,7 @@ class Renderer:
                 d.ellipse([px - rr, py - rr, px + rr, py + rr], outline=BLACK, width=2)
                 self._dashed(d, px, py, cx, cy)
             if numbered:
-                self._badge(d, px + size + 9, py - size - 2, idx + 1)
+                self._badge(d, px + size + 9, py - size - 2, 1 if self.mode == "nearest" else idx + 1)
 
     def _runway(self, d, rw, to_px, radius_km, r_px):
         (lat1, lon1), (lat2, lon2) = rw["ends"]
@@ -361,22 +389,32 @@ class Renderer:
     # ----------------------------------------------------------------- nearest
     def _nearest(self, d, snap, x0, y0, w, h):
         d.line([x0, y0, x0, y0 + h], fill=BLACK, width=2)
-        if not snap.aircraft:
+        if snap.error and self.card is None:
             return self._empty(d, snap, x0, y0, w, h)
-        ac = snap.aircraft[0]
+        if self.card is None:
+            return self._scanning(d, snap, x0, y0, w, h)
+        ac = self.card
         units = self.cfg["display"]["units"]
         pad = 18
         lx, rx = x0 + pad, x0 + w - pad
         inner_w = rx - lx
         y = y0 + 14
 
-        if _soon(ac):
+        if not self.card_live:
+            ago = max(0, snap.fetched_at - self.held_at)
+            when = "just now" if ago < 20 else (f"{int(round(ago / 10) * 10)} s ago" if ago < 90
+                                                else f"{round(ago / 60)} min ago")
+            label = f"LAST HEARD · {when.upper()}"
+            tw = d.textlength(label, font=self.f_badge)
+            d.rounded_rectangle([lx - 4, y - 4, lx + tw + 6, y + 15], radius=8, outline=BLACK, width=2)
+            d.text((lx + 1, y + 6), label, font=self.f_badge, fill=BLACK, anchor="lm")
+        elif _soon(ac):
             label = f"OVERHEAD {_fmt_eta(ac.overhead_in).upper()}" if ac.overhead_in >= 8 else "OVERHEAD NOW"
             tw = d.textlength(label, font=self.f_badge)
             d.rounded_rectangle([lx - 4, y - 4, lx + tw + 6, y + 15], radius=8, fill=BLACK)
             d.text((lx + 1, y + 6), label, font=self.f_badge, fill=WHITE, anchor="lm")
         else:
-            d.text((lx, y), "NEAREST AIRCRAFT", font=self.f_label, fill=BLACK, anchor="lt")
+            d.text((lx, y), "OVERHEAD NEARBY", font=self.f_label, fill=BLACK, anchor="lt")
         if ac.emergency:
             tw = d.textlength(ac.emergency, font=self.f_badge)
             d.rectangle([rx - tw - 8, y - 3, rx, y + 15], fill=BLACK)
@@ -439,6 +477,19 @@ class Renderer:
             d.text((cx, cy + 20), _fit(d, value, self.f_value, col_w - 8), font=self.f_value,
                    fill=BLACK, anchor="lt")
 
+    def _scanning(self, d, snap, x0, y0, w, h):
+        cx, cy = x0 + w // 2, y0 + h // 2
+        # little radar-sweep icon
+        r = 34
+        top = cy - 70
+        d.ellipse([cx - r, top - r, cx + r, top + r], outline=BLACK, width=2)
+        d.ellipse([cx - r / 2, top - r / 2, cx + r / 2, top + r / 2], outline=BLACK, width=1)
+        d.pieslice([cx - r, top - r, cx + r, top + r], -90, -45, fill=BLACK)
+        d.text((cx, cy + 4), "Scanning…", font=self.f_big_call, fill=BLACK, anchor="mm")
+        limit = f"{self.cfg['display']['nearest_max_altitude_ft']:,} ft"
+        d.text((cx, cy + 46), f"Listening for planes below {limit}", font=self.f_detail,
+               fill=BLACK, anchor="mm")
+
     # ------------------------------------------------------------------ footer
     def _footer(self, d, snap, width, height, h):
         y = height - h
@@ -448,7 +499,8 @@ class Renderer:
         else:
             left = f"Data: {snap.source}"
         right = f"Radius {self.cfg['filter']['radius_km']} km"
-        extra = len(snap.aircraft) - self.numbered
+        shown = (1 if self.featured is not None else 0) if self.mode == "nearest" else self.numbered
+        extra = len(snap.aircraft) - shown
         if extra > 0:
             d.text((width // 2, y + h // 2 + 1), f"+{extra} more on radar", font=self.f_small,
                    fill=BLACK, anchor="mm")

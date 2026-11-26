@@ -186,6 +186,16 @@ def predict_overhead(ac: Aircraft, radius_km: float, horizon_s: float = 300) -> 
         ac.overhead_in = secs
 
 
+def low_enough(ac: Aircraft, cfg: dict) -> bool:
+    """In "nearest" mode only planes below nearest_max_altitude_ft are featured
+    (the ones you can actually hear). Always True in "list" mode."""
+    if cfg["display"].get("mode") != "nearest":
+        return True
+    if ac.on_ground or ac.altitude_ft is None:
+        return False
+    return ac.altitude_ft <= cfg["display"]["nearest_max_altitude_ft"]
+
+
 def filter_and_sort(aircraft: list[Aircraft], cfg: dict) -> list[Aircraft]:
     f = cfg["filter"]
     out = []
@@ -202,7 +212,9 @@ def filter_and_sort(aircraft: list[Aircraft], cfg: dict) -> list[Aircraft]:
     ov = cfg.get("overhead", {})
     if ov.get("enabled"):
         for ac in out:
-            predict_overhead(ac, ov["radius_km"])
+            # in "nearest" mode, high planes don't trigger "overhead" redraws
+            if low_enough(ac, cfg):
+                predict_overhead(ac, ov["radius_km"])
     return out
 
 
@@ -245,8 +257,15 @@ class FlightFetcher:
             self._add_trails(aircraft)
             aircraft = filter_and_sort(aircraft, self.cfg)
             if self.cfg["data"]["lookup_routes"]:
-                n = 1 if self.cfg["display"]["mode"] == "nearest" else self.cfg["display"]["max_list"]
-                self._add_routes(aircraft[:n])
+                if self.cfg["display"]["mode"] == "nearest":
+                    # the card shows the next low plane due overhead, else the
+                    # nearest low one: look up both
+                    low = [a for a in aircraft if low_enough(a, self.cfg)]
+                    soon = sorted((a for a in low if a.overhead_in is not None),
+                                  key=lambda a: a.overhead_in)
+                    self._add_routes(list({a.hex: a for a in soon[:1] + low[:1]}.values()))
+                else:
+                    self._add_routes(aircraft[: self.cfg["display"]["max_list"]])
             log.info("Got %d aircraft from %s", len(aircraft), name)
             return Snapshot(aircraft, name, time.time())
         return Snapshot([], "", time.time(), error="; ".join(errors) or "no sources")

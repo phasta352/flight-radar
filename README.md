@@ -82,7 +82,9 @@ Useful commands:
 
 Everything lives in [`config.toml`](config.toml). The settings you're most likely to change:
 
-- **`mode`**: `"list"` shows the nearest flights (set how many with `max_list`; 5 or 6 fits the 7.5" screen). `"nearest"` shows one big card for the closest aircraft.
+- **`mode`**: `"list"` shows the nearest flights (set how many with `max_list`; 5 or 6 fits the 7.5" screen). `"nearest"` shows one big card for a plane low enough to hear: the next one due overhead, otherwise the closest.
+  - **`nearest_max_altitude_ft`** (default 5000): only planes at or below this height get the card. Higher planes still show on the radar but don't trigger early "overhead" redraws. Altitudes are above sea level and Luxembourg sits about 1,000 ft up, so 5,000 ft is roughly 4,000 ft above you. Findel arrivals and departures over Gasperich are usually around 2,000–3,500 ft.
+  - **`nearest_hold_seconds`** (default 120): after the last low plane has gone, its card stays up with a **"LAST HEARD · 1 MIN AGO"** tag, so you can check what just flew over. If another low plane comes along, it takes over the card straight away. When the time runs out with no new plane, the card switches to **"Scanning…"**.
 - **`latitude` / `longitude`**: your home. In Google Maps, right-click your house and click the numbers to copy them.
 - **`radius_km`**: how far around you to look. 15–30 km feels like "overhead"; 50+ km shows more traffic. Near an airport, 10–15 km keeps the radar from getting crowded.
 - **`min_altitude_ft`**: raise it to hide helicopters and light aircraft.

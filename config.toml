@@ -37,6 +37,12 @@ display_delay_seconds = 4   # the e-ink takes ~4 s to redraw, so start that much
 #   "nearest" = one big card with full details of the closest aircraft
 mode = "list"
 max_list = 5
+# "nearest" mode only features planes low enough to hear. Altitudes are above
+# sea level (Luxembourg is ~1,000 ft up). Higher planes still show on the radar.
+nearest_max_altitude_ft = 5000
+# After the last low plane has gone, keep its card on screen this long
+# (so you can look up what you just heard), then show "Scanning".
+nearest_hold_seconds = 120
 # "preview" saves a PNG (works on any computer, good for testing)
 # "waveshare" draws on a Waveshare e-Paper HAT
 driver = "preview"
