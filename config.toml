@@ -16,7 +16,7 @@ include_ground = false    # show aircraft taxiing at airports?
 
 [data]
 # Tried in order; if one fails the next one is used. All free, no API key.
-sources = ["airplanes.live", "adsb.fi", "adsb.lol"]
+sources = ["adsb.fi", "adsb.lol", "airplanes.live"]
 lookup_routes = true      # look up "LUX → LHR" from the callsign (adsbdb.com)
 timeout_seconds = 10
 
